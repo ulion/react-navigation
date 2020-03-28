@@ -29,6 +29,17 @@ export type StackActionType =
       target?: string;
     }
   | {
+      type: 'REUSE_AND_PUSH';
+      payload: { name: string; key?: string | undefined; params?: object };
+      source?: string;
+      target?: string;
+    }
+  | {
+      type: 'MOVE_TO_BOTTOM';
+      source?: string;
+      target?: string;
+    }
+  | {
       type: 'POP_TO_TOP';
       source?: string;
       target?: string;
@@ -88,6 +99,12 @@ export const StackActions = {
   },
   pop(count: number = 1): StackActionType {
     return { type: 'POP', payload: { count } };
+  },
+  reuseAndPush(name: string, params?: object): StackActionType {
+    return { type: 'REUSE_AND_PUSH', payload: { name, params } };
+  },
+  moveToBottom(): StackActionType {
+    return { type: 'MOVE_TO_BOTTOM' };
   },
   popToTop(): StackActionType {
     return { type: 'POP_TO_TOP' };
@@ -311,6 +328,99 @@ export default function StackRouter(options: StackRouterOptions) {
             },
             options
           );
+
+        case 'MOVE_TO_BOTTOM': {
+          const index =
+            action.target === state.key && action.source
+              ? state.routes.findIndex((r) => r.key === action.source)
+              : state.index;
+
+          if (index > 0) {
+            const routes = state.routes
+              .slice(0, index)
+              .concat(state.routes.slice(index + 1));
+
+            return {
+              ...state,
+              index: state.routes.length - 1,
+              routes: [state.routes[index], ...routes],
+            };
+          }
+
+          return null;
+        }
+
+        case 'REUSE_AND_PUSH':
+          if (
+            action.payload.key ||
+            (action.payload.name &&
+              state.routeNames.includes(action.payload.name))
+          ) {
+            // If the route already exists, navigate to that
+            let index = -1;
+
+            if (
+              (state.routes[state.index].name === action.payload.name &&
+                action.payload.key === undefined) ||
+              state.routes[state.index].key === action.payload.key
+            ) {
+              index = state.index;
+            } else {
+              for (let i = state.routes.length - 1; i >= 0; i--) {
+                if (
+                  (state.routes[i].name === action.payload.name &&
+                    action.payload.key === undefined) ||
+                  state.routes[i].key === action.payload.key
+                ) {
+                  index = i;
+                  break;
+                }
+              }
+            }
+
+            if (
+              index === -1 &&
+              action.payload.key &&
+              action.payload.name === undefined
+            ) {
+              return null;
+            }
+
+            if (index === -1 && action.payload.name !== undefined) {
+              return router.getStateForAction(
+                state,
+                {
+                  type: 'PUSH',
+                  payload: {
+                    key: action.payload.key,
+                    name: action.payload.name,
+                    params: action.payload.params,
+                  },
+                },
+                options
+              );
+            }
+
+            return {
+              ...state,
+              index: state.routes.length - 1,
+              routes: [
+                ...state.routes.slice(0, index),
+                ...state.routes.slice(index + 1, state.routes.length),
+                action.payload.params !== undefined
+                  ? {
+                      ...state.routes[index],
+                      params: {
+                        ...state.routes[index].params,
+                        ...action.payload.params,
+                      },
+                    }
+                  : state.routes[index],
+              ],
+            };
+          }
+
+          return null;
 
         case 'NAVIGATE':
           if (
